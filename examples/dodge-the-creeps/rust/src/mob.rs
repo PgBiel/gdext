@@ -15,6 +15,7 @@ pub struct Mob {
 #[godot_api]
 impl Mob {
     #[func]
+    // #[cfg(target_os = "linux")]
     fn on_visibility_screen_exited(&mut self) {
         self.base.queue_free();
     }
@@ -23,10 +24,13 @@ impl Mob {
     fn on_start_game(&mut self) {
         self.base.queue_free();
     }
+
+    fn bruh() {}
 }
 
 #[godot_api]
 impl RigidBody2DVirtual for Mob {
+    #[cfg(target = "eprl")]
     fn init(base: Base<RigidBody2D>) -> Self {
         Mob {
             min_speed: 150.0,

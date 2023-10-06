@@ -12,10 +12,36 @@ use crate::util::{bail, path_ends_with, KvParser};
 use crate::ParseResult;
 
 pub fn attribute_itest(input_decl: Declaration) -> ParseResult<TokenStream> {
-    let func = match input_decl {
+    let mut func = match input_decl {
         Declaration::Function(f) => f,
         _ => return bail!(&input_decl, "#[itest] can only be applied to functions"),
     };
+
+    // // if there are attributes below #[itest] (such that they are visible),
+    // // move #[itest] below them so they are applied first.
+    // if func.attributes.len() > 1 {
+    //     // take attributes, ensure the func object doesn't have any now
+    //     let attributes = std::mem::take(&mut func.attributes);
+    //     // Can unwrap this split as the length of attributes is > 1.
+    //     let (itest, other_attrs) = attributes.split_first().unwrap();
+
+    //     let itest = if let Some(last_attr) = attributes.last() {
+    //         if path_ends_with(&last_attr.path, "itest") {
+    //             panic!("Duplicate 'itest' usage!");
+    //         } else if path_ends_with(&last_attr.path, "doc") {
+    //             quote! {}
+    //         } else {
+    //             quote! { #itest }
+    //         }
+    //     } else {
+    //         quote! { #itest }
+    //     };
+    //     return Ok(quote! {
+    //         #(#other_attrs)*
+    //         #itest
+    //         #func
+    //     })
+    // }
 
     // Note: allow attributes for things like #[rustfmt] or #[clippy]
     if func.generic_params.is_some()

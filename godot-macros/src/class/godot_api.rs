@@ -16,6 +16,14 @@ use crate::class::{make_method_registration, make_virtual_method_callback, FuncD
 use crate::util;
 use crate::util::{bail, KvParser};
 
+/// Returns the index of the first attribute of the form #[expected_name] or #![expected_name]
+/// in the given list of attributes
+fn find_simple_attribute_named(attributes: &[Attribute], expected_name: &str) -> Option<usize> {
+    attributes
+        .iter()
+        .position(|attr| attr.get_single_path_segment().map_or(false, |name| name == expected_name))
+}
+
 pub fn attribute_godot_api(input_decl: Declaration) -> Result<TokenStream, Error> {
     let decl = match input_decl {
         Declaration::Impl(decl) => decl,
@@ -37,7 +45,14 @@ pub fn attribute_godot_api(input_decl: Declaration) -> Result<TokenStream, Error
     };
 
     if decl.trait_ty.is_some() {
-        transform_trait_impl(decl)
+        if let Some(virt_parsed_index) = find_simple_attribute_named(&decl.attributes, "virt_parsed") {
+            // remove internal 'virt_parsed' attribute
+            let mut parsed_decl = decl;
+            parsed_decl.attributes.remove(virt_parsed_index);
+            transform_trait_impl(parsed_decl)
+        } else {
+            trait_impl_attr_helper(decl)
+        }
     } else {
         transform_inherent_impl(decl)
     }
@@ -71,7 +86,20 @@ impl BoundAttr {
 fn transform_inherent_impl(mut decl: Impl) -> Result<TokenStream, Error> {
     let class_name = util::validate_impl(&decl, None, "godot_api")?;
     let class_name_obj = util::class_name_obj(&class_name);
+
+
     let (funcs, signals) = process_godot_fns(&mut decl)?;
+    // panic!(
+    //     "funcs: {}",
+    //     funcs
+    //         .into_iter()
+    //         // .filter_map(|i| match i {
+    //         //     ImplMember::Method(f) => Some(f),
+    //         //     _ => None,
+    //         // })
+    //         .map(|f| f.func.name.to_string())
+    //         .collect::<Vec<_>>()
+    //         .join(", "));
 
     let mut signal_name_strs: Vec<String> = Vec::new();
     let mut signal_parameters_count: Vec<usize> = Vec::new();
@@ -320,6 +348,7 @@ fn extract_attributes<T>(
 where
     for<'a> &'a T: Spanned,
 {
+    let mut hi = false;
     let mut found = None;
     for (index, attr) in attributes.iter().enumerate() {
         let Some(attr_name) = attr.get_single_path_segment() else {
@@ -373,15 +402,47 @@ where
         }
 
         found = new_found;
+        hi = true;
     }
+
+    // if attributes.len() == 2 {
+    //     panic!("Found? {} ({hi})", found.is_some());
+    // }
 
     Ok(found)
 }
 
 // ----------------------------------------------------------------------------------------------------------------------------------------------
 
-/// Codegen for `#[godot_api] impl GodotExt for MyType`
-fn transform_trait_impl(original_impl: Impl) -> Result<TokenStream, Error> {
+/// Step 1 of codegen for `#[godot_api] impl GodotExt for MyType`
+/// Adds a #[virt] attr to all functions in the trait.
+fn trait_impl_attr_helper(mut trait_impl: Impl) -> Result<TokenStream, Error> {
+    let reference_func = quote! {
+        #[virt]
+        fn function() {}
+    };
+    // We can unwrap since we expect the above code to always be correct
+    let parsed_func = venial::parse_declaration(reference_func).unwrap();
+    // We expect the #[virt] attribute to be there
+    let virt_attr = parsed_func.attributes().first().unwrap();
+    for item in trait_impl.body_items.iter_mut() {
+        if let ImplMember::Method(f) = item {
+            // add #[virt] if it's not already there
+            if find_simple_attribute_named(&f.attributes, "virt").is_none() {
+                f.attributes.insert(0, virt_attr.clone());
+            }
+        }
+    }
+    Ok(quote! {
+        #[godot_api]
+        #[virt_parsed]
+        #trait_impl
+    })
+}
+
+/// Step 2 of codegen for `#[godot_api] impl GodotExt for MyType`
+/// Only considers #[virt] functions
+fn transform_trait_impl(mut original_impl: Impl) -> Result<TokenStream, Error> {
     let (class_name, trait_name) = util::validate_trait_impl_virtual(&original_impl, "godot_api")?;
     let class_name_obj = util::class_name_obj(&class_name);
 
@@ -400,12 +461,20 @@ fn transform_trait_impl(original_impl: Impl) -> Result<TokenStream, Error> {
 
     let prv = quote! { ::godot::private };
 
-    for item in original_impl.body_items.iter() {
+    for item in original_impl.body_items.iter_mut() {
         let method = if let ImplMember::Method(f) = item {
             f
         } else {
             continue;
         };
+
+        if let Some(virt_attr_index) = find_simple_attribute_named(&method.attributes, "virt") {
+            // ensure #[virt] doesn't stay in the final output
+            method.attributes.remove(virt_attr_index);
+        } else {
+            // skip this method if it doesn't have #[virt]
+            continue;
+        }
 
         let method_name = method.name.to_string();
         match method_name.as_str() {
