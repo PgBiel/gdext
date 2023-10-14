@@ -49,6 +49,10 @@ impl BindingCompat for sys::GDExtensionInterfaceGetProcAddress {
         // first fields have values version_major=4 and version_minor=0. This might be deep in UB territory, but the alternative is
         // to not be able to detect Godot 4.0.x at all, and run into UB anyway.
 
+        if cfg!(target_arch = "wasm32") {
+            return;
+        }
+
         let get_proc_address = self.expect("get_proc_address unexpectedly null");
         let data_ptr = get_proc_address as *const LegacyLayout; // crowbar it via `as` cast
 
