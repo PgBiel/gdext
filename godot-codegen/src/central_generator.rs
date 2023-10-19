@@ -301,7 +301,7 @@ fn make_indexed_method_table(info: IndexedMethodTable) -> TokenStream {
         #imports
 
         pub struct #table_name {
-            function_pointers: [#fptr_type; #method_count],
+            function_pointers: ::std::vec::Vec<#fptr_type>,
         }
 
         impl #table_name {
@@ -313,11 +313,10 @@ fn make_indexed_method_table(info: IndexedMethodTable) -> TokenStream {
                 #ctor_parameters
             ) -> Self {
                 #pre_init_code
+                #( #method_inits )*
 
                 Self {
-                    function_pointers: [
-                        #( #method_inits )*
-                    ]
+                    function_pointers,
                 }
             }
 
@@ -718,7 +717,7 @@ fn make_class_method_table(
         method_count: 0,
     };
 
-    let mut class_sname_decls = Vec::new();
+    // let mut class_sname_decls = Vec::new();
     for class in api.classes.iter() {
         let class_ty = TyName::from_godot(&class.name);
         if special_cases::is_class_deleted(&class_ty)
@@ -728,25 +727,27 @@ fn make_class_method_table(
             continue;
         }
 
-        let class_var = format_ident!("sname_{}", &class.name);
         let initializer_expr = util::make_sname_ptr(&class.name);
+        let class_var = quote! { #initializer_expr };
 
-        let prev_method_count = table.method_count;
+        // let prev_method_count = table.method_count;
         populate_class_methods(&mut table, class, &class_ty, &class_var, ctx);
-        if table.method_count > prev_method_count {
-            // Only create class variable if any methods have been added.
-            class_sname_decls.push(quote! {
-                let #class_var = #initializer_expr;
-            });
-        }
+        // if table.method_count > prev_method_count {
+        //    // Only create class variable if any methods have been added.
+        //    class_sname_decls.push(quote! {
+        //        let #class_var = #initializer_expr;
+        //    });
+        // }
 
         table.class_count += 1;
     }
 
+    let method_count = table.method_count;
     table.pre_init_code = quote! {
+        let mut function_pointers = Vec::with_capacity(#method_count);
         let get_method_bind = interface.classdb_get_method_bind.expect("classdb_get_method_bind absent");
 
-        #( #class_sname_decls )*
+        // #( #class_sname_decls )*
     };
 
     make_indexed_method_table(table)
@@ -781,10 +782,7 @@ fn make_builtin_method_table(
             interface: &crate::GDExtensionInterface,
             string_names: &mut crate::StringCache,
         },
-        pre_init_code: quote! {
-            use crate as sys;
-            let get_builtin_method = interface.variant_get_ptr_builtin_method.expect("variant_get_ptr_builtin_method absent");
-        },
+        pre_init_code: TokenStream::new(), // late-init: depends on method count
         fptr_type: quote! { crate::BuiltinMethodBind },
         method_inits: vec![],
         named_accessors: vec![],
@@ -802,6 +800,13 @@ fn make_builtin_method_table(
         table.class_count += 1;
     }
 
+    let method_count = table.method_count;
+    table.pre_init_code = quote! {
+        use crate as sys;
+        let mut function_pointers = Vec::with_capacity(#method_count);
+        let get_builtin_method = interface.variant_get_ptr_builtin_method.expect("variant_get_ptr_builtin_method absent");
+    };
+
     make_indexed_method_table(table)
 }
 
@@ -809,7 +814,7 @@ fn populate_class_methods(
     table: &mut IndexedMethodTable,
     class: &Class,
     class_ty: &TyName,
-    class_var: &Ident,
+    class_var: &TokenStream,
     ctx: &mut Context,
 ) {
     for method in option_as_slice(&class.methods) {
@@ -872,7 +877,7 @@ fn populate_builtin_methods(
 
 fn make_class_method_init(
     method: &ClassMethod,
-    class_var: &Ident,
+    class_var: &TokenStream,
     class_ty: &TyName,
 ) -> TokenStream {
     let class_name_str = class_ty.godot_ty.as_str();
@@ -886,7 +891,7 @@ fn make_class_method_init(
     });
 
     quote! {
-        crate::load_class_method(get_method_bind, string_names, #class_var, #class_name_str, #method_name_str, #hash),
+        {let _class_var = #class_var; function_pointers.push(crate::load_class_method(get_method_bind, string_names, _class_var, #class_name_str, #method_name_str, #hash));};
     }
 }
 
@@ -908,7 +913,7 @@ fn make_builtin_method_init(
     });
 
     quote! {
-        {let _ = #index;crate::load_builtin_method(get_builtin_method, string_names, sys::#variant_type, #variant_type_str, #method_name_str, #hash)},
+        {let _ = #index;function_pointers.push(crate::load_builtin_method(get_builtin_method, string_names, sys::#variant_type, #variant_type_str, #method_name_str, #hash));};
     }
 }
 
