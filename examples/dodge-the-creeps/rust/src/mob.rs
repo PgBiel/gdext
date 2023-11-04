@@ -12,6 +12,18 @@ pub struct Mob2 {
     base: Base<Mob>,
 }
 
+#[godot_api]
+impl Mob2 {
+    #[func]
+    fn do_thing_idk(&mut self) {
+        godot_print!("hello world!");
+        self.base.bind_mut().amongus();
+        godot_print!("Bye!");
+        self.base.add_child(RigidBody2D::new_alloc().upcast());
+        godot_print!("M!");
+    }
+}
+
 #[derive(GodotClass)]
 #[class(base=RigidBody2D)]
 pub struct Mob {
@@ -32,6 +44,11 @@ impl Mob {
     #[func]
     fn on_start_game(&mut self) {
         self.base.queue_free();
+    }
+
+    #[func]
+    fn amongus(&mut self) {
+        godot_print!("Hi I'm amongus");
     }
 }
 
