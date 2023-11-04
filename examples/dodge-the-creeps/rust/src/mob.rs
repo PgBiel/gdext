@@ -3,6 +3,16 @@ use godot::prelude::*;
 use rand::seq::SliceRandom;
 
 #[derive(GodotClass)]
+#[class(rustbase=Mob, init)]
+pub struct Mob2 {
+    pub min_speed: real,
+    pub max_speed: real,
+
+    #[base]
+    base: Base<Mob>,
+}
+
+#[derive(GodotClass)]
 #[class(base=RigidBody2D)]
 pub struct Mob {
     pub min_speed: real,

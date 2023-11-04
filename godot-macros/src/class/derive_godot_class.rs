@@ -19,6 +19,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
 
     let struct_cfg = parse_struct_attributes(class)?;
     let fields = parse_fields(class)?;
+    let is_rustbase = struct_cfg.is_rustbase;
 
     let class_name = &class.name;
     let class_name_str: String = struct_cfg
@@ -29,11 +30,16 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
     let class_name_obj = util::class_name_obj(class_name);
 
     let base_ty = &struct_cfg.base_ty;
-    let base_class = quote! { ::godot::engine::#base_ty };
+    let base_class = if is_rustbase { quote! { #base_ty } } else { quote! { ::godot::engine::#base_ty } };
     let base_class_name_obj = util::class_name_obj(&base_class);
-    let inherits_macro = format_ident!("inherits_transitive_{}", base_ty);
-
     let prv = quote! { ::godot::private };
+    let inherits_impls = if is_rustbase {
+        quote! { impl ::godot::obj::Inherits<#base_ty> for #class_name {} }
+    } else {
+        let inherits_macro = format_ident!("inherits_transitive_{}", base_ty);
+        quote! { #prv::class_macros::#inherits_macro!(#class_name); }
+    };
+
     let godot_exports_impl = make_property_impl(class_name, &fields);
 
     let editor_plugin = if struct_cfg.is_editor_plugin {
@@ -96,7 +102,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
 
         #editor_plugin
 
-        #prv::class_macros::#inherits_macro!(#class_name);
+        #inherits_impls
     })
 }
 
@@ -115,6 +121,7 @@ pub fn make_existence_check(ident: &Ident) -> TokenStream {
 /// Returns the name of the base and the default mode
 fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
     let mut base_ty = ident("RefCounted");
+    let mut is_rustbase = false;
     let mut has_generated_init = false;
     let mut is_tool = false;
     let mut is_editor_plugin = false;
@@ -124,6 +131,9 @@ fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
     if let Some(mut parser) = KvParser::parse(&class.attributes, "class")? {
         if let Some(base) = parser.handle_ident("base")? {
             base_ty = base;
+        } else if let Some(rustbase) = parser.handle_ident("rustbase")? {
+            base_ty = rustbase;
+            is_rustbase = true;
         }
 
         if parser.handle_alone("init")? {
@@ -147,6 +157,7 @@ fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
         base_ty,
         has_generated_init,
         is_tool,
+        is_rustbase,
         is_editor_plugin,
         rename,
     })
@@ -228,6 +239,7 @@ struct ClassAttributes {
     base_ty: Ident,
     has_generated_init: bool,
     is_tool: bool,
+    is_rustbase: bool,
     is_editor_plugin: bool,
     rename: Option<Ident>,
 }
