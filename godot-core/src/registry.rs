@@ -82,6 +82,8 @@ pub enum PluginComponent {
             _class_user_data: *mut std::ffi::c_void,
             instance: sys::GDExtensionClassInstancePtr,
         ),
+
+        is_virtual: bool,
     },
 
     /// Collected from `#[godot_api] impl MyClass`
@@ -162,6 +164,7 @@ struct ClassRegistrationInfo {
     godot_params: sys::GDExtensionClassCreationInfo2,
     init_level: InitLevel,
     is_editor_plugin: bool,
+    is_virtual: bool,
 }
 
 /// Registers a class with static type information.
@@ -188,6 +191,7 @@ pub fn register_class<
         get_virtual_func: Some(callbacks::get_virtual::<T>),
         get_rid_func: None,
         class_userdata: ptr::null_mut(), // will be passed to create fn, but global per class
+        is_virtual: T::IS_VIRTUAL.into(),
         ..default_creation_info()
     };
     #[cfg(since_api = "4.2")]
@@ -202,6 +206,7 @@ pub fn register_class<
         get_virtual_func: Some(callbacks::get_virtual::<T>),
         get_rid_func: None,
         class_userdata: ptr::null_mut(), // will be passed to create fn, but global per class
+        is_virtual: T::IS_VIRTUAL.into(),
         ..default_creation_info()
     };
 
@@ -217,6 +222,7 @@ pub fn register_class<
             panic!("Unknown initialization level for class {}", T::class_name())
         }),
         is_editor_plugin: false,
+        is_virtual: T::IS_VIRTUAL,
     });
 }
 
@@ -305,8 +311,10 @@ fn fill_class_info(component: PluginComponent, c: &mut ClassRegistrationInfo) {
             generated_create_fn,
             generated_recreate_fn,
             free_fn,
+            is_virtual,
         } => {
             c.parent_class_name = Some(base_class_name);
+            c.is_virtual = is_virtual;
 
             fill_into(
                 &mut c.godot_params.create_instance_func,
@@ -667,6 +675,7 @@ fn default_registration_info(class_name: ClassName) -> ClassRegistrationInfo {
         godot_params: default_creation_info(),
         init_level: InitLevel::Scene,
         is_editor_plugin: false,
+        is_virtual: false,
     }
 }
 

@@ -41,6 +41,9 @@ where
     /// from.
     const INIT_LEVEL: Option<InitLevel>;
 
+    /// Whether this is a virtual class.
+    const IS_VIRTUAL: bool = false;
+
     /// The name of the class, under which it is registered in Godot.
     ///
     /// This may deviate from the Rust struct name: `HttpRequest::class_name().as_str() == "HTTPRequest"`.

@@ -20,6 +20,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
     let struct_cfg = parse_struct_attributes(class)?;
     let fields = parse_fields(class)?;
     let is_rustbase = struct_cfg.is_rustbase;
+    let is_virtual = struct_cfg.is_virtual;
 
     let class_name = &class.name;
     let class_name_str: String = struct_cfg
@@ -79,6 +80,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
             type Declarer = ::godot::obj::dom::UserDomain;
             type Mem = <Self::Base as ::godot::obj::GodotClass>::Mem;
             const INIT_LEVEL: Option<::godot::init::InitLevel> = <#base_class as ::godot::obj::GodotClass>::INIT_LEVEL;
+            const IS_VIRTUAL: bool = #is_virtual;
 
             fn class_name() -> ::godot::builtin::meta::ClassName {
                 ::godot::builtin::meta::ClassName::from_ascii_cstr(#class_name_cstr)
@@ -96,6 +98,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
                 generated_create_fn: #create_fn,
                 generated_recreate_fn: #recreate_fn,
                 free_fn: #prv::callbacks::free::<#class_name>,
+                is_virtual: #is_virtual,
             },
             init_level: <#class_name as ::godot::obj::GodotClass>::INIT_LEVEL,
         });
@@ -125,6 +128,7 @@ fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
     let mut has_generated_init = false;
     let mut is_tool = false;
     let mut is_editor_plugin = false;
+    let mut is_virtual = false;
     let mut rename: Option<Ident> = None;
 
     // #[class] attribute on struct
@@ -134,6 +138,10 @@ fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
         } else if let Some(rustbase) = parser.handle_ident("rustbase")? {
             base_ty = rustbase;
             is_rustbase = true;
+        }
+
+        if parser.handle_alone("virtual")? {
+            is_virtual = true;
         }
 
         if parser.handle_alone("init")? {
@@ -160,6 +168,7 @@ fn parse_struct_attributes(class: &Struct) -> ParseResult<ClassAttributes> {
         is_rustbase,
         is_editor_plugin,
         rename,
+        is_virtual,
     })
 }
 
@@ -242,6 +251,7 @@ struct ClassAttributes {
     is_rustbase: bool,
     is_editor_plugin: bool,
     rename: Option<Ident>,
+    is_virtual: bool,
 }
 
 fn make_godot_init_impl(class_name: &Ident, fields: Fields) -> TokenStream {
