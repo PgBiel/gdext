@@ -34,7 +34,7 @@ pub fn derive_godot_class(decl: Declaration) -> ParseResult<TokenStream> {
     let base_class_name_obj = util::class_name_obj(&base_class);
     let prv = quote! { ::godot::private };
     let inherits_impls = if is_rustbase {
-        quote! { impl ::godot::obj::Inherits<#base_ty> for #class_name {} }
+        quote! { /* impl ::godot::obj::Inherits<#base_ty> for #class_name {} */ }
     } else {
         let inherits_macro = format_ident!("inherits_transitive_{}", base_ty);
         quote! { #prv::class_macros::#inherits_macro!(#class_name); }

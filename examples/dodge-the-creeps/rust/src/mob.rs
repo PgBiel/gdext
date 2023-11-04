@@ -12,6 +12,11 @@ pub struct Mob2 {
     base: Base<Mob>,
 }
 
+impl<T> Inherits<T> for Mob2
+where Mob: Inherits<T> {
+
+}
+
 #[godot_api]
 impl Mob2 {
     #[func]
